@@ -4,23 +4,32 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime
 import pyodbc
+import logging
+from typing import List, Dict, Union, Optional
 
 
 url = "https://www.ofiii.com/filter?topic=4&sort=created_at"
 max_pages = 5
 movieUrlList = []
 movieData = []
+movieCategories=[]
 img_folder = "movie_images"
 img_url = "https://www.ofiii.com"
 # # 測試用
 # url = "https://www.ofiii.com/vod/72716/1/E1"
 
+# MSSQL 連接字串
+conn_str = (
+    "DRIVER={ODBC Driver 17 for SQL Server};"
+    "SERVER=.\\sql2022;"  # 替換為您的伺服器名稱
+    "DATABASE=MovieTicket;"  # 替換為您的資料庫名稱
+    "UID=sa5;"  # 替換為您的使用者名稱
+    "PWD=123456;"  # 替換為您的密碼
+)
+
+
 # 取得電影連結
 def movieUrl_data(url):
-    # if current_page > max_pages:
-    #     print(f"已達到最大頁數限制（{max_pages} 頁），停止爬取。")
-    #     return
-
     response = requests.get(url)
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -39,6 +48,20 @@ def movieUrl_data(url):
             # movieUrlList.append(new_href)
             print(f"正在獲取: {new_href}")
             movie_data(new_href)
+    
+    #  獲取電影分類
+    categories = soup.find_all('div', class_="jsx-2145870150 options")[1]
+
+    displayOrder = 5
+    for category in categories:
+        c = category.text.strip()
+        data = {
+            "Name": c,
+            "DisplayOrder": displayOrder,
+        }
+        movieCategories.append(data)
+        displayOrder += 5
+    print(movieCategories)
 
 # 取得電影資料
 def movie_data(url):
@@ -53,7 +76,8 @@ def movie_data(url):
         # 電影名稱
         chinese_title = info.find("h1", class_="jsx-3862431936 title")
         chinese_title = chinese_title.text.strip()
-        
+
+
         english_title = info.find("h2", class_="jsx-3862431936 subtitle_section")
         english_title = english_title.text.strip()
 
@@ -76,6 +100,16 @@ def movie_data(url):
 
         # 以下都使用這個進行尋找個別的內容
         tags_items = soup.find_all('div', class_='jsx-1531172110 tags_item')
+
+        # 類型
+        genre = []
+        for item in tags_items:
+            title = item.find('div', class_='jsx-1531172110 item_title')
+            if title and title.get_text(strip=True) == '類型':
+                # 找到類型標題後，提取所有的 <a> 標籤
+                a_tags = item.find('div', class_='jsx-1531172110 item_content').find_all('a')
+                # 提取每個 <a> 標籤中的文本
+                genre = [a.get_text(strip=True) for a in a_tags]
 
         # 演員
         actor = []
@@ -138,20 +172,24 @@ def movie_data(url):
             continue
 
         data = {
-            "中文電影名稱": chinese_title,
-            "英文電影名稱" : english_title,
-            "電影圖片" : image,
-            "導演" : director,
-            "演員" : actor,
-            "上映年份" : year,
-            "播放時間" : playTime,
-            "分級" : movieRate,
-            "內容" : description,  
+            "Title": chinese_title,
+            # "英文電影名稱" : english_title,
+            "PosterURL" : chinese_title + ".jpg",
+            "Director" : director,
+            "Cast" : actor,
+            "ReleaseDate" : year,
+            "RunTime" : playTime,
+            "Description" : description, 
+            "RatingId": movieRate, 
+            "GenreId": genre
         }
 
         # print(data)
         movieData.append(data)
+        # 插入資料庫
+        insert_movie_data(movieData)
         print(movieData)
+    
 # movie_data(url)
 
 # 建立圖片資料夾
@@ -176,38 +214,6 @@ def save_image(img_url, img_name):
     except Exception as e:
         print(f"下載圖片時發生錯誤：{e}")
         return None     
-
-# 丟入資料庫
-def insert_to_mssql(data):
-    conn_str = "DRIVER={ODBC Driver 17 for SQL Server};SERVER=your_server;DATABASE=your_database;UID=your_user;PWD=your_password"
-    try:
-        conn = pyodbc.connect(conn_str)
-        cursor = conn.cursor()
-
-        # 插入資料
-        sql = """
-        INSERT INTO MovieData (ChineseTitle, EnglishTitle, ImgPath, Director, Actors, Year, PlayTime, Rating, Description, Youtube)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        for item in data:
-            cursor.execute(sql, 
-                           item["中文電影名稱"], 
-                           item["英文電影名稱"], 
-                           item["電影圖片"], 
-                           ",".join(item["導演"]), 
-                           ",".join(item["演員"]), 
-                           item["上映年份"], 
-                           item["播放時間"], 
-                           item["分級"], 
-                           item["內容"], 
-                           item["預告片"])
-        
-        conn.commit()
-        print("資料已成功插入至 MSSQL！")
-    except Exception as e:
-        print(f"插入資料時發生錯誤：{e}")
-    finally:
-        conn.close()
 
 # 轉換日期
 def convert_to_gregorian(minguo_date):
@@ -242,9 +248,6 @@ def convert_to_gregorian(minguo_date):
 # 啟動案子
 movieUrl_data(url)
 
-# # 插入資料
-# insert_to_mssql(movieData)
 
 
 
- 

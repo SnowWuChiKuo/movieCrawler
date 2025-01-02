@@ -18,8 +18,22 @@ https://www.python.org/downloads/
 
 ## 啟動專案
 
-python offii.py
+python offii.py  
+爬取整個網站，但不丟入資料庫，會下載圖片
 
-python u2.py
+python u2.py  
+爬取整個網站，但不丟入資料庫，會下載圖片
 
-這兩種選一種啟動。
+python rating.py
+爬取影片的分級，都會丟入資料庫
+
+python genre.py
+爬取影片的類型，都會丟入資料庫
+
+python movie.py
+爬取所有影片，並且丟入資料庫
+
+python db.py
+測試資料庫連線
+
+請先測試資料庫連線狀況，再去個別的檔案進行修改。
